@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>FinanceTracker Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, sans-serif;
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 0 20px;
+            color: #222;
+        }
+        h1 { margin-bottom: 4px; }
+        .subtitle { color: #666; margin-bottom: 32px; }
+        .card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+        .card h2 { margin-top: 0; font-size: 16px; color: #444; }
+        table { width: 100%; border-collapse: collapse; }
+        td, th { text-align: left; padding: 6px 4px; border-bottom: 1px solid #eee; }
+        .row { display: flex; gap: 24px; }
+        .row .card { flex: 1; }
+        .filters { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+        .filters input, .filters select {
+            padding: 6px 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .filters input[type="text"] { flex: 1; min-width: 160px; }
+        .amount-out { color: #c62828; }
+        .amount-in { color: #2e7d32; }
+        .empty-row td { color: #999; font-style: italic; }
+    </style>
+</head>
+<body>
+    <h1>FinanceTracker</h1>
+    <p class="subtitle">Where your money goes, updated from finance.db</p>
+
+    <div class="card">
+        <h2>Net cash flow by month</h2>
+        <canvas id="monthlyChart" height="90"></canvas>
+    </div>
+
+    <div class="row">
+        <div class="card">
+            <h2>Spend by category</h2>
+            <canvas id="categoryChart"></canvas>
+        </div>
+        <div class="card">
+            <h2>Top merchants</h2>
+            <canvas id="merchantChart"></canvas>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Recurring merchants (2+ appearances)</h2>
+        <table id="recurringTable">
+            <thead><tr><th>Merchant</th><th>Times seen</th></tr></thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h2>Search transactions</h2>
+        <div class="filters">
+            <input type="text" id="searchText" placeholder="Search description or Zelle/Venmo name...">
+            <select id="filterCategory"><option value="">All categories</option></select>
+            <select id="filterAccount"><option value="">All accounts</option></select>
+            <input type="date" id="filterStart" title="From date">
+            <input type="date" id="filterEnd" title="To date">
+        </div>
+        <table id="txnTable">
+            <thead>
+                <tr>
+                    <th>Date</th><th>Description</th><th>Counterparty</th>
+                    <th>Category</th><th>Account</th><th>Amount</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <script>
+        async function loadDashboard() {
+            const response = await fetch("/api/data");
+            const data = await response.json();
+
+            new Chart(document.getElementById("monthlyChart"), {
+                type: "bar",
+                data: {
+                    labels: data.monthly_net.labels,
+                    datasets: [{
+                        label: "Net cash flow ($)",
+                        data: data.monthly_net.values,
+                        backgroundColor: data.monthly_net.values.map(
+                            v => v >= 0 ? "#4caf50" : "#e57373"
+                        ),
+                    }],
+                },
+                options: { plugins: { legend: { display: false } } },
+            });
+
+            new Chart(document.getElementById("categoryChart"), {
+                type: "doughnut",
+                data: {
+                    labels: data.categories.labels,
+                    datasets: [{ data: data.categories.values }],
+                },
+            });
+
+            new Chart(document.getElementById("merchantChart"), {
+                type: "bar",
+                data: {
+                    labels: data.top_merchants.labels,
+                    datasets: [{
+                        label: "Spend ($)",
+                        data: data.top_merchants.values,
+                        backgroundColor: "#5c6bc0",
+                    }],
+                },
+                options: {
+                    indexAxis: "y",
+                    plugins: { legend: { display: false } },
+                },
+            });
+
+            const tbody = document.querySelector("#recurringTable tbody");
+            data.recurring.forEach(row => {
+                const tr = document.createElement("tr");
+                tr.innerHTML = `<td>${row.description}</td><td>${row.count}</td>`;
+                tbody.appendChild(tr);
+            });
+        }
+
+        async function loadFilterOptions() {
+            const response = await fetch("/api/filters");
+            const { categories, accounts } = await response.json();
+
+            const categorySelect = document.getElementById("filterCategory");
+            categories.forEach(name => {
+                const opt = document.createElement("option");
+                opt.value = name;
+                opt.textContent = name;
+                categorySelect.appendChild(opt);
+            });
+
+            const accountSelect = document.getElementById("filterAccount");
+            accounts.forEach(name => {
+                const opt = document.createElement("option");
+                opt.value = name;
+                opt.textContent = name;
+                accountSelect.appendChild(opt);
+            });
+        }
+
+        async function searchTransactions() {
+            const params = new URLSearchParams({
+                q: document.getElementById("searchText").value,
+                category: document.getElementById("filterCategory").value,
+                account: document.getElementById("filterAccount").value,
+                start_date: document.getElementById("filterStart").value,
+                end_date: document.getElementById("filterEnd").value,
+            });
+
+            const response = await fetch("/api/transactions?" + params.toString());
+            const rows = await response.json();
+
+            const tbody = document.querySelector("#txnTable tbody");
+            tbody.innerHTML = "";
+
+            if (rows.length === 0) {
+                tbody.innerHTML = '<tr class="empty-row"><td colspan="6">No matching transactions</td></tr>';
+                return;
+            }
+
+            rows.forEach(row => {
+                const tr = document.createElement("tr");
+                const amountClass = row.amount < 0 ? "amount-out" : "amount-in";
+                const amountDisplay = (row.amount < 0 ? "-$" : "+$") + Math.abs(row.amount).toFixed(2);
+                tr.innerHTML = `
+                    <td>${row.txn_date}</td>
+                    <td>${row.description}</td>
+                    <td>${row.counterparty || ""}</td>
+                    <td>${row.category || ""}</td>
+                    <td>${row.account || ""}</td>
+                    <td class="${amountClass}">${amountDisplay}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Debounce the free-text search so it doesn't fire an API call on
+        // every single keystroke -- wait until typing pauses for 300ms.
+        let searchDebounceTimer;
+        function debouncedSearch() {
+            clearTimeout(searchDebounceTimer);
+            searchDebounceTimer = setTimeout(searchTransactions, 300);
+        }
+
+        document.getElementById("searchText").addEventListener("input", debouncedSearch);
+        document.getElementById("filterCategory").addEventListener("change", searchTransactions);
+        document.getElementById("filterAccount").addEventListener("change", searchTransactions);
+        document.getElementById("filterStart").addEventListener("change", searchTransactions);
+        document.getElementById("filterEnd").addEventListener("change", searchTransactions);
+
+        loadDashboard();
+        loadFilterOptions();
+        searchTransactions();
+    </script>
+</body>
+</html>

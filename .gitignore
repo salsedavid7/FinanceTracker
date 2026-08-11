@@ -1,0 +1,9 @@
+# Created ahead of git init -- ready for whenever the Git roadmap step happens.
+
+.env
+finance.db
+__pycache__/
+*.pyc
+.venv/
+venv/
+.DS_Store

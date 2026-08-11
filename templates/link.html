@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>FinanceTracker - Connect a bank</title>
+    <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+</head>
+<body style="font-family: sans-serif; max-width: 500px; margin: 60px auto;">
+    <h2>Connect a bank account (Sandbox)</h2>
+    <p>This opens Plaid's test bank login. Use Sandbox credentials
+       <code>user_good</code> / <code>pass_good</code> -- no real bank needed.</p>
+
+    <button id="link-button">Connect a bank</button>
+    <p id="status"></p>
+
+    <script>
+        document.getElementById("link-button").onclick = async function () {
+            // Step 1: ask our own backend for a link_token
+            const tokenResponse = await fetch("/api/create_link_token", { method: "POST" });
+            const { link_token } = await tokenResponse.json();
+
+            // Step 2: open Plaid Link with that token
+            const handler = Plaid.create({
+                token: link_token,
+                onSuccess: async function (public_token, metadata) {
+                    document.getElementById("status").innerText = "Connecting...";
+
+                    // Step 3: send the public_token back to our backend to exchange
+                    const exchangeResponse = await fetch("/api/exchange_public_token", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ public_token: public_token }),
+                    });
+                    const result = await exchangeResponse.json();
+                    document.getElementById("status").innerText =
+                        "Connected! Accounts: " + result.accounts.join(", ");
+                },
+                onExit: function (err, metadata) {
+                    if (err) {
+                        document.getElementById("status").innerText = "Exited: " + err.error_message;
+                    }
+                },
+            });
+            handler.open();
+        };
+    </script>
+</body>
+</html>
