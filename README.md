@@ -11,7 +11,16 @@ schema design, ETL pipelines, API integration, dedup/idempotency, and basic
 web app architecture — using my own real financial data as the motivating
 use case rather than a toy dataset.
 
-![Dashboard screenshot](screenshots/dashboard.jpg)
+> **Note:** the screenshots and numbers below are from **Plaid's Sandbox
+> environment** plus synthetic seed data (see `data/*.csv`) — fake
+> institutions, fake transactions, fake balances. This is not my real bank
+> account or real finances; it's a portfolio demo of the pipeline working
+> end to end. See [Getting started](#getting-started) for how to run it
+> yourself against the same sandbox data.
+
+![Dashboard overview — KPI cards and net cash flow](screenshots/dashboard-overview.jpg)
+![Spend by category and top merchants](screenshots/dashboard-categories.jpg)
+![P2P payments by recipient and payment debt](screenshots/dashboard-p2p.jpg)
 
 ## What it does
 
@@ -24,9 +33,13 @@ use case rather than a toy dataset.
 - Deduplicates automatically — re-importing the same data twice is always
   a safe no-op
 - Visualizes spend by category, net cash flow over time, top merchants,
-  and recurring charges
+  P2P payments by recipient, and recurring charges
+- Tracks real account balances (via Plaid's `/accounts/get`) for a live
+  checking balance and total debt, not just the transaction ledger
+- Lets you manually flag a transaction as a shared/joint expense and
+  computes a simple debt/surplus per Zelle/Venmo contact
 - Supports full-text search across every transaction, filterable by
-  category, account, and date range
+  category, account, counterparty, and date range
 
 ## Architecture
 
@@ -49,7 +62,8 @@ from.
 | Enrichment | `categorize.py`, `counterparty.py` — rules/regex, description → structured fields |
 | Ingestion | `ingest.py` (CSV), `plaid_client.py` + `app.py` + `plaid_sync.py` (Plaid) |
 | Analysis | `report.py` — pandas aggregations |
-| Presentation | `dashboard.py` + `templates/dashboard.html` — Flask + Chart.js, local-only |
+| Presentation | `dashboard.py` + `templates/dashboard.html` — Flask + Chart.js + Tailwind (CDN, no build step), local-only |
+| Balances | `refresh_balances.py` — re-pulls current/available balance per account from Plaid |
 
 ## Tech stack
 
@@ -108,11 +122,12 @@ python3 plaid_sync.py    # pulls transactions into the same finance.db
 - Tune the Zelle/ACH counterparty patterns against real transaction data
   (written from general knowledge, not yet validated against real examples)
 - Encrypt Plaid access tokens at rest before connecting a real bank account
-
-## Credit
-
-Inspired by [wealthAgent](https://github.com/NoPointExc/wealthAgent) (MIT
-licensed) — reused the general concept (net-worth tracker with Plaid
-sync), not its code. This project is a from-scratch Python implementation
-built for learning, with a much smaller scope (single-user, local-only,
-no multi-user auth/MCP layer).
+- Real expense-splitting for joint payments. `is_joint_payment` is currently
+  just a flag you can toggle per transaction — it doesn't record *who* a
+  joint charge was shared with or how much they owe, since a restaurant
+  bill isn't itself a P2P transaction with a counterparty attached. The P2P
+  debt numbers on the dashboard are computed only from actual Zelle/Venmo
+  history (money sent vs. received per person), which is real and correct
+  as far as it goes, but doesn't yet connect to non-P2P joint expenses.
+- Connect a real bank account once the portfolio/demo version above is
+  finished and published — this repo stays Sandbox/CSV-only until then

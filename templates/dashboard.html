@@ -1,216 +1,560 @@
 <!DOCTYPE html>
-<html>
+<html lang="en" class="dark">
 <head>
-    <title>FinanceTracker Dashboard</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
-    <style>
-        body {
-            font-family: -apple-system, sans-serif;
-            max-width: 900px;
-            margin: 40px auto;
-            padding: 0 20px;
-            color: #222;
-        }
-        h1 { margin-bottom: 4px; }
-        .subtitle { color: #666; margin-bottom: 32px; }
-        .card {
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 24px;
-        }
-        .card h2 { margin-top: 0; font-size: 16px; color: #444; }
-        table { width: 100%; border-collapse: collapse; }
-        td, th { text-align: left; padding: 6px 4px; border-bottom: 1px solid #eee; }
-        .row { display: flex; gap: 24px; }
-        .row .card { flex: 1; }
-        .filters { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
-        .filters input, .filters select {
-            padding: 6px 8px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            font-size: 14px;
-        }
-        .filters input[type="text"] { flex: 1; min-width: 160px; }
-        .amount-out { color: #c62828; }
-        .amount-in { color: #2e7d32; }
-        .empty-row td { color: #999; font-style: italic; }
-    </style>
+<meta charset="UTF-8">
+<title>Finance Tracker</title>
+
+<!-- Dark mode is permanent -- no toggle, no light theme. class="dark" above
+     is the only thing driving every dark: utility in this file. -->
+<script>
+  tailwind = { config: { darkMode: 'class' } };
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
+<style>
+  /* Native <input type="date"> renders its calendar-icon/picker using the
+     OS light theme by default, which is nearly invisible against a dark
+     input background -- color-scheme tells the browser to draw its own
+     built-in date picker (icon, popup calendar, etc) in a dark-appropriate
+     palette instead. */
+  .date-input { color-scheme: dark; }
+</style>
 </head>
-<body>
-    <h1>FinanceTracker</h1>
-    <p class="subtitle">Where your money goes, updated from finance.db</p>
+<body class="bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-gray-100 min-h-screen transition-colors">
 
-    <div class="card">
-        <h2>Net cash flow by month</h2>
-        <canvas id="monthlyChart" height="90"></canvas>
+  <header class="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-6 py-4 sticky top-0 z-10">
+    <div class="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-4">
+      <div>
+        <h1 class="text-xl font-semibold">Finance Tracker</h1>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+          Monitoring <span id="ownerName">David</span>'s personal wealth and spending
+          &nbsp;&bull;&nbsp; Across <span id="accountCount">-</span> accounts
+          &nbsp;&bull;&nbsp; Data as of <span id="dataAsOf">-</span>
+        </p>
+      </div>
+
+      <div class="flex items-center gap-3 flex-wrap">
+        <div class="flex items-center gap-2 text-sm">
+          <label for="dashboardStart" class="text-gray-500 dark:text-gray-400">From</label>
+          <input type="date" id="dashboardStart" class="date-input border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-md px-2 py-1 text-sm">
+          <label for="dashboardEnd" class="text-gray-500 dark:text-gray-400">To</label>
+          <input type="date" id="dashboardEnd" class="date-input border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-md px-2 py-1 text-sm">
+          <button id="clearDateFilter" class="border border-gray-300 dark:border-gray-700 rounded-md px-3 py-1 text-sm hover:bg-gray-50 dark:hover:bg-gray-800">Clear</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-5 pt-6 pb-16">
+
+    <!-- KPI cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl px-5 py-4">
+        <div class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Current Checking Balance</div>
+        <div class="text-2xl font-semibold mt-1 text-gray-900 dark:text-gray-50" id="kpiChecking">$0</div>
+        <div class="text-xs text-gray-400 dark:text-gray-500 mt-1" id="kpiCheckingNote"></div>
+      </div>
+      <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl px-5 py-4">
+        <div class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Previous Month Income</div>
+        <div class="text-2xl font-semibold mt-1 text-green-600 dark:text-green-400" id="kpiPrevIncome">$0</div>
+        <div class="text-xs text-gray-400 dark:text-gray-500 mt-1" id="kpiPrevLabel1"></div>
+      </div>
+      <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl px-5 py-4">
+        <div class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Previous Month Spend</div>
+        <div class="text-2xl font-semibold mt-1 text-red-600 dark:text-red-400" id="kpiPrevSpend">$0</div>
+        <div class="text-xs text-gray-400 dark:text-gray-500 mt-1" id="kpiPrevLabel2"></div>
+      </div>
+      <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl px-5 py-4">
+        <div class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Total Debt</div>
+        <div class="text-2xl font-semibold mt-1 text-gray-900 dark:text-gray-50" id="kpiDebt">$0</div>
+        <div class="text-xs text-gray-400 dark:text-gray-500 mt-1" id="kpiDebtNote"></div>
+      </div>
     </div>
 
-    <div class="row">
-        <div class="card">
-            <h2>Spend by category</h2>
-            <canvas id="categoryChart"></canvas>
-        </div>
-        <div class="card">
-            <h2>Top merchants</h2>
-            <canvas id="merchantChart"></canvas>
-        </div>
+    <!-- Net cash flow -->
+    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 mb-6">
+      <h2 class="text-sm font-semibold mb-3">Net cash flow by month</h2>
+      <div class="h-[280px]"><canvas id="monthlyChart"></canvas></div>
     </div>
 
-    <div class="card">
-        <h2>Recurring merchants (2+ appearances)</h2>
-        <table id="recurringTable">
-            <thead><tr><th>Merchant</th><th>Times seen</th></tr></thead>
-            <tbody></tbody>
+    <!-- Category + merchants -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
+      <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+        <h2 class="text-sm font-semibold mb-3">Spend by category</h2>
+        <div class="h-[420px]"><canvas id="categoryChart"></canvas></div>
+      </div>
+      <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-semibold">Top merchants</h2>
+          <label class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 cursor-pointer">
+            <input type="checkbox" id="includeP2pToggle" class="rounded">
+            Include P2P payments
+          </label>
+        </div>
+        <div class="h-[360px]"><canvas id="merchantChart"></canvas></div>
+      </div>
+    </div>
+
+    <!-- P2P by recipient + debt -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
+      <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+        <h2 class="text-sm font-semibold mb-3">P2P payments by recipient</h2>
+        <div class="h-[280px]"><canvas id="p2pChart"></canvas></div>
+      </div>
+      <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+        <h2 class="text-sm font-semibold mb-1">P2P payment debt</h2>
+        <p class="text-xs text-gray-400 dark:text-gray-500 mb-3">
+          Net of Zelle/Venmo/etc sent vs. received per person, from actual P2P history only.
+        </p>
+        <div id="p2pDebtList" class="space-y-2"></div>
+      </div>
+    </div>
+
+    <!-- Recurring merchants -->
+    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 mb-6">
+      <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <h2 class="text-sm font-semibold">Recurring merchants (2+ appearances)</h2>
+        <div class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+          <label for="recurringSlider">Show</label>
+          <input type="range" id="recurringSlider" min="1" max="5" value="5" class="w-32 accent-indigo-600">
+          <span id="recurringSliderValue">5</span>
+        </div>
+      </div>
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-xs uppercase text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-800">
+            <th class="py-2">Merchant</th><th class="py-2">Times seen</th>
+          </tr>
+        </thead>
+        <tbody id="recurringBody"></tbody>
+      </table>
+    </div>
+
+    <!-- Search -->
+    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+      <h2 class="text-sm font-semibold mb-3">Search transactions</h2>
+      <div class="flex flex-wrap items-center gap-2 mb-4">
+        <input type="text" id="searchText" placeholder="Search description or Zelle/Venmo name..."
+               class="flex-1 min-w-[200px] border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-md px-3 py-1.5 text-sm">
+        <select id="filterCategory" class="border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-md px-2 py-1.5 text-sm">
+          <option value="">All categories</option>
+        </select>
+        <select id="filterAccount" class="border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-md px-2 py-1.5 text-sm">
+          <option value="">All accounts</option>
+        </select>
+        <select id="filterCounterparty" class="border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-md px-2 py-1.5 text-sm">
+          <option value="">All Zelle/P2P recipients</option>
+        </select>
+        <input type="date" id="filterStart" title="From date" class="date-input border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-md px-2 py-1.5 text-sm">
+        <input type="date" id="filterEnd" title="To date" class="date-input border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-md px-2 py-1.5 text-sm">
+        <button id="exportCsv" class="ml-auto border border-indigo-600 text-indigo-600 dark:text-indigo-400 dark:border-indigo-400 rounded-md px-3 py-1.5 text-sm font-medium hover:bg-indigo-50 dark:hover:bg-indigo-950">
+          Export CSV
+        </button>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-left text-xs uppercase text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-800">
+              <th class="py-2 pr-2">Date</th><th class="py-2 pr-2">Description</th><th class="py-2 pr-2">Counterparty</th>
+              <th class="py-2 pr-2">Category</th><th class="py-2 pr-2">Account</th><th class="py-2 pr-2">Amount</th>
+              <th class="py-2 pr-2">Joint?</th>
+            </tr>
+          </thead>
+          <tbody id="txnBody"></tbody>
         </table>
+      </div>
     </div>
+  </main>
 
-    <div class="card">
-        <h2>Search transactions</h2>
-        <div class="filters">
-            <input type="text" id="searchText" placeholder="Search description or Zelle/Venmo name...">
-            <select id="filterCategory"><option value="">All categories</option></select>
-            <select id="filterAccount"><option value="">All accounts</option></select>
-            <input type="date" id="filterStart" title="From date">
-            <input type="date" id="filterEnd" title="To date">
-        </div>
-        <table id="txnTable">
-            <thead>
-                <tr>
-                    <th>Date</th><th>Description</th><th>Counterparty</th>
-                    <th>Category</th><th>Account</th><th>Amount</th>
-                </tr>
-            </thead>
-            <tbody></tbody>
-        </table>
-    </div>
+<script>
+  let monthlyChart, categoryChart, merchantChart, p2pChart;
+  let lastSearchRows = [];
+  let lastRecurringRows = [];
 
-    <script>
-        async function loadDashboard() {
-            const response = await fetch("/api/data");
-            const data = await response.json();
+  function formatMoney(value) {
+    const sign = value < 0 ? "-" : "";
+    return sign + "$" + Math.abs(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
 
-            new Chart(document.getElementById("monthlyChart"), {
-                type: "bar",
-                data: {
-                    labels: data.monthly_net.labels,
-                    datasets: [{
-                        label: "Net cash flow ($)",
-                        data: data.monthly_net.values,
-                        backgroundColor: data.monthly_net.values.map(
-                            v => v >= 0 ? "#4caf50" : "#e57373"
-                        ),
-                    }],
-                },
-                options: { plugins: { legend: { display: false } } },
-            });
+  // Dark mode is permanent (no toggle), so chart text/gridline colors --
+  // which canvas drawing has to pick in JS, since it doesn't respond to
+  // Tailwind's dark: classes on its own -- are just fixed constants.
+  const CHART_TEXT_COLOR = '#d1d5db';
+  const CHART_GRID_COLOR = '#374151';
 
-            new Chart(document.getElementById("categoryChart"), {
-                type: "doughnut",
-                data: {
-                    labels: data.categories.labels,
-                    datasets: [{ data: data.categories.values }],
-                },
-            });
+  const CATEGORY_COLORS = ["#4f46e5", "#dc2626", "#f59e0b", "#16a34a", "#0ea5e9", "#a855f7", "#ec4899", "#64748b", "#14b8a6", "#f97316"];
 
-            new Chart(document.getElementById("merchantChart"), {
-                type: "bar",
-                data: {
-                    labels: data.top_merchants.labels,
-                    datasets: [{
-                        label: "Spend ($)",
-                        data: data.top_merchants.values,
-                        backgroundColor: "#5c6bc0",
-                    }],
-                },
-                options: {
-                    indexAxis: "y",
-                    plugins: { legend: { display: false } },
-                },
-            });
+  // Custom plugin: draws a thin leader line from each donut slice out to an
+  // external label showing "Category  $amount (pct%)". Chart.js has no
+  // built-in support for this style -- chartjs-plugin-datalabels can place
+  // text near a slice, but not draw a connecting line out to it, so this is
+  // a small hand-rolled afterDraw plugin instead.
+  const leaderLineLabelsPlugin = {
+    id: 'leaderLineLabels',
+    afterDraw(chart) {
+      if (chart.config.type !== 'doughnut') return;
+      const { ctx } = chart;
+      const meta = chart.getDatasetMeta(0);
+      const dataset = chart.data.datasets[0];
+      const total = dataset.data.reduce((a, b) => a + b, 0);
+      if (!total) return;
 
-            const tbody = document.querySelector("#recurringTable tbody");
-            data.recurring.forEach(row => {
-                const tr = document.createElement("tr");
-                tr.innerHTML = `<td>${row.description}</td><td>${row.count}</td>`;
-                tbody.appendChild(tr);
-            });
+      const LINE_OUT = 18;   // how far past the slice the line extends before bending
+      const MIN_GAP = 15;    // minimum vertical space between two labels on the same side
+
+      // Pass 1: raw label anchor points, straight off each slice's midpoint angle.
+      // With several small categories bunched at similar angles (they're sorted
+      // by spend, so the smallest slices end up adjacent), their labels would
+      // otherwise land on top of each other -- resolved in pass 2 below.
+      const labels = meta.data.map((arc, i) => {
+        const value = dataset.data[i];
+        const angle = (arc.startAngle + arc.endAngle) / 2;
+        const cos = Math.cos(angle), sin = Math.sin(angle);
+        return {
+          i, value, angle,
+          cx: arc.x, cy: arc.y, outerR: arc.outerRadius,
+          x0: arc.x + cos * arc.outerRadius,
+          y0: arc.y + sin * arc.outerRadius,
+          y1: arc.y + sin * (arc.outerRadius + LINE_OUT),
+          goingRight: cos >= 0,
+        };
+      }).filter(l => l.value);
+
+      // Pass 2: within each side (left/right of center), push labels apart
+      // vertically wherever they'd overlap.
+      ['left', 'right'].forEach(side => {
+        const group = labels
+          .filter(l => (side === 'right') === l.goingRight)
+          .sort((a, b) => a.y1 - b.y1);
+        for (let j = 1; j < group.length; j++) {
+          if (group[j].y1 - group[j - 1].y1 < MIN_GAP) {
+            group[j].y1 = group[j - 1].y1 + MIN_GAP;
+          }
         }
+      });
 
-        async function loadFilterOptions() {
-            const response = await fetch("/api/filters");
-            const { categories, accounts } = await response.json();
+      ctx.save();
+      ctx.font = '11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+      ctx.lineWidth = 1;
 
-            const categorySelect = document.getElementById("filterCategory");
-            categories.forEach(name => {
-                const opt = document.createElement("option");
-                opt.value = name;
-                opt.textContent = name;
-                categorySelect.appendChild(opt);
-            });
+      labels.forEach(l => {
+        const pct = Math.round((l.value / total) * 100);
+        const cos = Math.cos(l.angle);
+        const x1 = l.cx + cos * (l.outerR + LINE_OUT);
+        const x2 = x1 + (l.goingRight ? 10 : -10);
 
-            const accountSelect = document.getElementById("filterAccount");
-            accounts.forEach(name => {
-                const opt = document.createElement("option");
-                opt.value = name;
-                opt.textContent = name;
-                accountSelect.appendChild(opt);
-            });
-        }
+        ctx.strokeStyle = dataset.backgroundColor[l.i];
+        ctx.beginPath();
+        ctx.moveTo(l.x0, l.y0);
+        ctx.lineTo(x1, l.y1);
+        ctx.lineTo(x2, l.y1);
+        ctx.stroke();
 
-        async function searchTransactions() {
-            const params = new URLSearchParams({
-                q: document.getElementById("searchText").value,
-                category: document.getElementById("filterCategory").value,
-                account: document.getElementById("filterAccount").value,
-                start_date: document.getElementById("filterStart").value,
-                end_date: document.getElementById("filterEnd").value,
-            });
+        ctx.fillStyle = CHART_TEXT_COLOR;
+        ctx.textAlign = l.goingRight ? 'left' : 'right';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`${chart.data.labels[l.i]}  ${pct}%`, x2 + (l.goingRight ? 4 : -4), l.y1);
+      });
+      ctx.restore();
+    },
+  };
 
-            const response = await fetch("/api/transactions?" + params.toString());
-            const rows = await response.json();
+  async function loadDashboard() {
+    const start = document.getElementById("dashboardStart").value;
+    const end = document.getElementById("dashboardEnd").value;
+    const includeP2p = document.getElementById("includeP2pToggle").checked;
+    const params = new URLSearchParams({ start_date: start, end_date: end, include_p2p: includeP2p });
 
-            const tbody = document.querySelector("#txnTable tbody");
-            tbody.innerHTML = "";
+    const response = await fetch("/api/data?" + params.toString());
+    const data = await response.json();
 
-            if (rows.length === 0) {
-                tbody.innerHTML = '<tr class="empty-row"><td colspan="6">No matching transactions</td></tr>';
-                return;
-            }
+    // Header
+    document.getElementById("ownerName").textContent = data.owner_name || "David";
+    document.getElementById("accountCount").textContent = data.account_summary.account_count;
+    document.getElementById("dataAsOf").textContent = data.data_as_of || "no data yet";
 
-            rows.forEach(row => {
-                const tr = document.createElement("tr");
-                const amountClass = row.amount < 0 ? "amount-out" : "amount-in";
-                const amountDisplay = (row.amount < 0 ? "-$" : "+$") + Math.abs(row.amount).toFixed(2);
-                tr.innerHTML = `
-                    <td>${row.txn_date}</td>
-                    <td>${row.description}</td>
-                    <td>${row.counterparty || ""}</td>
-                    <td>${row.category || ""}</td>
-                    <td>${row.account || ""}</td>
-                    <td class="${amountClass}">${amountDisplay}</td>
-                `;
-                tbody.appendChild(tr);
-            });
-        }
+    // KPI cards
+    document.getElementById("kpiChecking").textContent = formatMoney(data.account_summary.checking_balance);
+    document.getElementById("kpiDebt").textContent = formatMoney(data.account_summary.total_debt);
+    const estNote = data.account_summary.balance_is_estimated
+      ? "Estimated from transaction history (no live bank balance on file for at least one account)"
+      : "";
+    document.getElementById("kpiCheckingNote").textContent = estNote;
+    document.getElementById("kpiDebtNote").textContent = estNote;
 
-        // Debounce the free-text search so it doesn't fire an API call on
-        // every single keystroke -- wait until typing pauses for 300ms.
-        let searchDebounceTimer;
-        function debouncedSearch() {
-            clearTimeout(searchDebounceTimer);
-            searchDebounceTimer = setTimeout(searchTransactions, 300);
-        }
+    document.getElementById("kpiPrevIncome").textContent = formatMoney(data.previous_month.income);
+    document.getElementById("kpiPrevSpend").textContent = formatMoney(data.previous_month.spend);
+    document.getElementById("kpiPrevLabel1").textContent = data.previous_month.label || "";
+    document.getElementById("kpiPrevLabel2").textContent = data.previous_month.label || "";
 
-        document.getElementById("searchText").addEventListener("input", debouncedSearch);
-        document.getElementById("filterCategory").addEventListener("change", searchTransactions);
-        document.getElementById("filterAccount").addEventListener("change", searchTransactions);
-        document.getElementById("filterStart").addEventListener("change", searchTransactions);
-        document.getElementById("filterEnd").addEventListener("change", searchTransactions);
+    // Chart.js instances must be destroyed before re-creating on the same
+    // <canvas>, otherwise re-running this (date filter change, P2P toggle)
+    // stacks charts on top of each other.
+    if (monthlyChart) monthlyChart.destroy();
+    if (categoryChart) categoryChart.destroy();
+    if (merchantChart) merchantChart.destroy();
+    if (p2pChart) p2pChart.destroy();
 
-        loadDashboard();
-        loadFilterOptions();
-        searchTransactions();
-    </script>
+    monthlyChart = new Chart(document.getElementById("monthlyChart"), {
+      type: "bar",
+      data: {
+        labels: data.monthly_net.labels,
+        datasets: [{
+          label: "Net cash flow ($)",
+          data: data.monthly_net.values,
+          backgroundColor: data.monthly_net.values.map(v => v >= 0 ? "#16a34a" : "#dc2626"),
+          borderRadius: 4,
+          // maxBarThickness caps how wide a single bar can get so a
+          // handful of months doesn't turn into fat blocks -- but capped
+          // together with barPercentage/categoryPercentage this wide,
+          // bars stay full-looking without crowding the value label.
+          maxBarThickness: 64,
+          barPercentage: 0.8,
+          categoryPercentage: 0.9,
+        }],
+      },
+      options: {
+        maintainAspectRatio: false,
+        layout: { padding: { top: 24, bottom: 8 } },
+        plugins: {
+          legend: { display: false },
+          datalabels: {
+            anchor: v => (v.dataset.data[v.dataIndex] >= 0 ? 'end' : 'start'),
+            align: v => (v.dataset.data[v.dataIndex] >= 0 ? 'end' : 'start'),
+            color: CHART_TEXT_COLOR,
+            font: { size: 11 },
+            formatter: v => formatMoney(v),
+          },
+        },
+        scales: {
+          x: { ticks: { color: CHART_TEXT_COLOR }, grid: { color: CHART_GRID_COLOR } },
+          // grace adds headroom above/below the actual min/max data value,
+          // so the tallest/shortest bar's label isn't drawn right at the
+          // canvas edge and clipped.
+          y: { ticks: { color: CHART_TEXT_COLOR }, grid: { color: CHART_GRID_COLOR }, grace: '15%' },
+        },
+      },
+      plugins: [ChartDataLabels],
+    });
+
+    categoryChart = new Chart(document.getElementById("categoryChart"), {
+      type: "doughnut",
+      data: {
+        labels: data.categories.labels,
+        datasets: [{ data: data.categories.values, backgroundColor: CATEGORY_COLORS }],
+      },
+      options: {
+        maintainAspectRatio: false,
+        radius: '72%',
+        layout: { padding: 70 },
+        plugins: { legend: { display: false }, tooltip: { enabled: true } },
+      },
+      plugins: [leaderLineLabelsPlugin],
+    });
+
+    merchantChart = new Chart(document.getElementById("merchantChart"), {
+      type: "bar",
+      data: {
+        labels: data.top_merchants.labels,
+        datasets: [{ label: "Spend ($)", data: data.top_merchants.values, backgroundColor: "#4f46e5", borderRadius: 4 }],
+      },
+      options: {
+        maintainAspectRatio: false,
+        indexAxis: "y",
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: CHART_TEXT_COLOR }, grid: { color: CHART_GRID_COLOR } },
+          y: { ticks: { color: CHART_TEXT_COLOR }, grid: { color: CHART_GRID_COLOR } },
+        },
+      },
+    });
+
+    p2pChart = new Chart(document.getElementById("p2pChart"), {
+      type: "bar",
+      data: {
+        labels: data.p2p_by_recipient.labels,
+        datasets: [{ label: "Sent ($)", data: data.p2p_by_recipient.values, backgroundColor: "#0ea5e9", borderRadius: 4 }],
+      },
+      options: {
+        maintainAspectRatio: false,
+        indexAxis: "y",
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: CHART_TEXT_COLOR }, grid: { color: CHART_GRID_COLOR } },
+          y: { ticks: { color: CHART_TEXT_COLOR }, grid: { color: CHART_GRID_COLOR } },
+        },
+      },
+    });
+
+    // P2P debt list
+    const debtEl = document.getElementById("p2pDebtList");
+    debtEl.innerHTML = "";
+    if (data.p2p_debt.length === 0) {
+      debtEl.innerHTML = '<p class="text-sm text-gray-400 dark:text-gray-500 italic">No P2P activity in this range.</p>';
+    } else {
+      data.p2p_debt.forEach(row => {
+        const label = row.status === 'owes_you' ? `owes you ${formatMoney(Math.abs(row.net_amount))}`
+                    : row.status === 'you_owe' ? `you owe ${formatMoney(row.net_amount)}`
+                    : 'settled up';
+        const badgeClass = row.status === 'owes_you' ? 'text-green-600 dark:text-green-400'
+                          : row.status === 'you_owe' ? 'text-red-600 dark:text-red-400'
+                          : 'text-gray-400';
+        const div = document.createElement("div");
+        div.className = "flex items-center justify-between text-sm border-b border-gray-100 dark:border-gray-800 pb-2";
+        div.innerHTML = `<span>${row.counterparty}</span><span class="font-medium ${badgeClass}">${label}</span>`;
+        debtEl.appendChild(div);
+      });
+    }
+
+    // Recurring merchants -- data.recurring comes back already sorted by
+    // count descending, capped server-side at 20. The slider controls how
+    // many of those get shown, default 5; stash the full list so moving
+    // the slider re-renders instantly without another fetch.
+    lastRecurringRows = data.recurring;
+    const slider = document.getElementById("recurringSlider");
+    slider.max = Math.max(1, lastRecurringRows.length);
+    if (parseInt(slider.value, 10) > lastRecurringRows.length) {
+      slider.value = Math.max(1, lastRecurringRows.length);
+    }
+    renderRecurringTable(parseInt(slider.value, 10));
+  }
+
+  function renderRecurringTable(count) {
+    document.getElementById("recurringSliderValue").textContent = count;
+    const recurBody = document.getElementById("recurringBody");
+    recurBody.innerHTML = "";
+    lastRecurringRows.slice(0, count).forEach(row => {
+      const tr = document.createElement("tr");
+      tr.className = "border-b border-gray-100 dark:border-gray-800";
+      tr.innerHTML = `<td class="py-2">${row.description}</td><td class="py-2">${row.count}</td>`;
+      recurBody.appendChild(tr);
+    });
+  }
+
+  async function loadFilterOptions() {
+    const response = await fetch("/api/filters");
+    const { categories, accounts, counterparties } = await response.json();
+
+    const fill = (id, values) => {
+      const select = document.getElementById(id);
+      values.forEach(name => {
+        const opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name;
+        select.appendChild(opt);
+      });
+    };
+    fill("filterCategory", categories);
+    fill("filterAccount", accounts);
+    fill("filterCounterparty", counterparties);
+  }
+
+  async function toggleJoint(id, checked) {
+    await fetch(`/api/transactions/${id}/joint`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_joint: checked }),
+    });
+    const row = lastSearchRows.find(r => r.id === id);
+    if (row) row.is_joint_payment = checked ? 1 : 0;
+  }
+
+  async function searchTransactions() {
+    const params = new URLSearchParams({
+      q: document.getElementById("searchText").value,
+      category: document.getElementById("filterCategory").value,
+      account: document.getElementById("filterAccount").value,
+      counterparty: document.getElementById("filterCounterparty").value,
+      start_date: document.getElementById("filterStart").value,
+      end_date: document.getElementById("filterEnd").value,
+    });
+
+    const response = await fetch("/api/transactions?" + params.toString());
+    const rows = await response.json();
+    lastSearchRows = rows;
+
+    const tbody = document.getElementById("txnBody");
+    tbody.innerHTML = "";
+
+    if (rows.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" class="py-3 text-gray-400 italic">No matching transactions</td></tr>';
+      return;
+    }
+
+    rows.forEach(row => {
+      const tr = document.createElement("tr");
+      tr.className = "border-b border-gray-100 dark:border-gray-800";
+      const amountClass = row.amount < 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400";
+      tr.innerHTML = `
+        <td class="py-2 pr-2">${row.txn_date}</td>
+        <td class="py-2 pr-2">${row.description}</td>
+        <td class="py-2 pr-2">${row.counterparty || ""}</td>
+        <td class="py-2 pr-2">${row.category || ""}</td>
+        <td class="py-2 pr-2">${row.account || ""}</td>
+        <td class="py-2 pr-2 ${amountClass}">${formatMoney(row.amount)}</td>
+        <td class="py-2 pr-2"><input type="checkbox" class="joint-checkbox rounded" data-id="${row.id}" ${row.is_joint_payment ? "checked" : ""}></td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    tbody.querySelectorAll(".joint-checkbox").forEach(cb => {
+      cb.addEventListener("change", e => toggleJoint(parseInt(e.target.dataset.id, 10), e.target.checked));
+    });
+  }
+
+  function exportCsv() {
+    if (lastSearchRows.length === 0) {
+      alert("No rows to export -- adjust your search first.");
+      return;
+    }
+    const headers = ["Date", "Description", "Counterparty", "Category", "Account", "Amount", "Joint"];
+    const csvLines = [headers.join(",")];
+    lastSearchRows.forEach(row => {
+      const fields = [
+        row.txn_date, row.description, row.counterparty || "",
+        row.category || "", row.account || "", row.amount, row.is_joint_payment ? "Yes" : "No",
+      ].map(field => `"${String(field).replace(/"/g, '""')}"`);
+      csvLines.push(fields.join(","));
+    });
+    const blob = new Blob([csvLines.join("\n")], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "transactions.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  let searchDebounceTimer;
+  function debouncedSearch() {
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(searchTransactions, 300);
+  }
+
+  document.getElementById("searchText").addEventListener("input", debouncedSearch);
+  document.getElementById("filterCategory").addEventListener("change", searchTransactions);
+  document.getElementById("filterAccount").addEventListener("change", searchTransactions);
+  document.getElementById("filterCounterparty").addEventListener("change", searchTransactions);
+  document.getElementById("filterStart").addEventListener("change", searchTransactions);
+  document.getElementById("filterEnd").addEventListener("change", searchTransactions);
+  document.getElementById("exportCsv").addEventListener("click", exportCsv);
+
+  document.getElementById("dashboardStart").addEventListener("change", loadDashboard);
+  document.getElementById("dashboardEnd").addEventListener("change", loadDashboard);
+  document.getElementById("includeP2pToggle").addEventListener("change", loadDashboard);
+  document.getElementById("clearDateFilter").addEventListener("click", () => {
+    document.getElementById("dashboardStart").value = "";
+    document.getElementById("dashboardEnd").value = "";
+    loadDashboard();
+  });
+  document.getElementById("recurringSlider").addEventListener("input", e => {
+    renderRecurringTable(parseInt(e.target.value, 10));
+  });
+
+  loadDashboard();
+  loadFilterOptions();
+  searchTransactions();
+</script>
 </body>
 </html>

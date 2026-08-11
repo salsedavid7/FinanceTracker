@@ -14,7 +14,7 @@ new bank account.
 from flask import Flask, render_template, jsonify, request
 
 import plaid_client
-from db import get_connection, init_db, get_or_create_account
+from db import get_connection, init_db, get_or_create_account, update_account_balance
 
 app = Flask(__name__)
 
@@ -64,6 +64,18 @@ def exchange_public_token():
             (plaid_item_row_id, acct["account_id"], account_id),
         )
         conn.commit()
+
+        # Capture the balance Plaid hands us right here at connect time too,
+        # so the dashboard has real numbers immediately -- refresh_balances.py
+        # is for keeping it current on later runs, not the only way to get it.
+        balances = acct["balances"]
+        update_account_balance(
+            conn,
+            plaid_account_id=acct["account_id"],
+            current_balance=balances["current"],
+            available_balance=balances["available"],
+        )
+
         created.append(acct["name"])
 
     conn.close()

@@ -51,6 +51,10 @@ MIGRATIONS = [
     ("accounts", "plaid_item_id", "INTEGER"),
     ("accounts", "plaid_account_id", "TEXT"),
     ("transactions", "counterparty_id", "INTEGER"),
+    ("accounts", "current_balance", "REAL"),
+    ("accounts", "available_balance", "REAL"),
+    ("accounts", "balance_updated_at", "TEXT"),
+    ("transactions", "is_joint_payment", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
 
@@ -98,6 +102,37 @@ def get_or_create_counterparty(conn: sqlite3.Connection, name: str) -> int:
     cur = conn.execute("INSERT INTO counterparties (name) VALUES (?)", (name,))
     conn.commit()
     return cur.lastrowid
+
+
+def update_account_balance(
+    conn: sqlite3.Connection,
+    plaid_account_id: str,
+    current_balance: float,
+    available_balance: float,
+) -> None:
+    """Store the latest bank-reported balance for one Plaid-linked account.
+    Matches on plaid_account_id (Plaid's own identifier), not our internal
+    id, since that's what callers get back from Plaid's API."""
+    conn.execute(
+        """
+        UPDATE accounts
+        SET current_balance = ?, available_balance = ?, balance_updated_at = CURRENT_TIMESTAMP
+        WHERE plaid_account_id = ?
+        """,
+        (current_balance, available_balance, plaid_account_id),
+    )
+    conn.commit()
+
+
+def set_joint_payment(conn: sqlite3.Connection, transaction_id: int, is_joint: bool) -> bool:
+    """Toggle the manually-set is_joint_payment flag on one transaction.
+    Returns False if no transaction with that id exists."""
+    cur = conn.execute(
+        "UPDATE transactions SET is_joint_payment = ? WHERE id = ?",
+        (1 if is_joint else 0, transaction_id),
+    )
+    conn.commit()
+    return cur.rowcount > 0
 
 
 def insert_transaction(conn: sqlite3.Connection, txn) -> bool:

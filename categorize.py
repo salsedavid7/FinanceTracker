@@ -61,6 +61,7 @@ RULES = [
     CategoryRule("ZELLE", "P2P Payment"),
     CategoryRule("VENMO", "P2P Payment"),
     CategoryRule("CASH APP", "P2P Payment"),
+    CategoryRule("PAYPAL", "P2P Payment"),
 
     # ACH company-initiated debits/credits (e.g. "ORIG CO NAME: CITI CARD
     # ONLINE") -- a standard NACHA description format. Categorized as real
