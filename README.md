@@ -8,8 +8,7 @@ result in a local dashboard.
 Built while transitioning from BI/analytics into data engineering, as a way
 to practice the actual engineering skills BI work doesn't usually touch:
 schema design, ETL pipelines, API integration, dedup/idempotency, and basic
-web app architecture — using my own real financial data as the motivating
-use case rather than a toy dataset.
+web app architecture.
 
 > **Note:** the screenshots and numbers below are from **Plaid's Sandbox
 > environment** plus synthetic seed data (see `data/*.csv`) — fake
@@ -21,6 +20,7 @@ use case rather than a toy dataset.
 ![Dashboard overview — KPI cards and net cash flow](screenshots/dashboard-overview.jpg)
 ![Spend by category and top merchants](screenshots/dashboard-categories.jpg)
 ![P2P payments by recipient and payment debt](screenshots/dashboard-p2p.jpg)
+![Searchable transaction table with joint-payment flag and CSV export](screenshots/dashboard-search.jpg)
 
 ## What it does
 
